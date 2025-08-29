@@ -108,6 +108,32 @@
     background: var(--panel-2);
 }
 
+/* Label markers on map */
+.map-label {
+    pointer-events: auto;
+}
+.map-label__box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.15));
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.map-label__box:hover {
+    border-color: var(--primary);
+}
+.map-label__title {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
 /* Map Sidebar */
 .map-sidebar {
     background: var(--panel);

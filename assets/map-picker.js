@@ -49,6 +49,24 @@
 
     let marker = null;
 
+    // Instruction overlay on the map
+    const overlay = document.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.top = '10px';
+    overlay.style.left = '10px';
+    overlay.style.zIndex = '1000';
+    overlay.style.padding = '8px 10px';
+    overlay.style.borderRadius = '8px';
+    overlay.style.fontSize = '12px';
+    overlay.style.background = 'var(--elev-bg, rgba(0,0,0,0.7))';
+    overlay.style.color = 'var(--text, #fff)';
+    overlay.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
+    overlay.textContent = (window.JI18N && window.JI18N.getLang && window.JI18N.getLang() === 'he')
+      ? 'ניתן להזיז את הסמן ידנית כדי להתאים את המיקום'
+      : 'You can drag the marker to fine‑tune the job location';
+    mapEl.style.position = mapEl.style.position || 'relative';
+    mapEl.appendChild(overlay);
+
     function setMarker(lat, lng) {
       if (marker) {
         marker.setLatLng([lat, lng]);
@@ -58,10 +76,26 @@
           const pos = marker.getLatLng();
           latEl.value = pos.lat.toFixed(6);
           lngEl.value = pos.lng.toFixed(6);
+          updateOverlayMessage();
         });
       }
       latEl.value = Number(lat).toFixed(6);
       lngEl.value = Number(lng).toFixed(6);
+      updateOverlayMessage();
+    }
+
+    function updateOverlayMessage() {
+      const titleInput = document.getElementById(options.titleInputId || 'title') || document.getElementById('titleManagement');
+      const cityInput = document.getElementById(options.cityInputId || 'location') || document.getElementById('locationManagement');
+      const title = titleInput && titleInput.value ? titleInput.value.trim() : '';
+      const city = cityInput && cityInput.value ? cityInput.value.trim() : '';
+      if (!overlay) return;
+      const isHe = window.JI18N && window.JI18N.getLang && window.JI18N.getLang() === 'he';
+      if (title || city) {
+        overlay.textContent = isHe
+          ? `המיקום של המשרה שנבחר הוא: ${title || 'משרה'} – ${city || ''}. ניתן להזיז את המיקום ידנית בהתאם לצורך`
+          : `Selected job location: ${title || 'Position'} – ${city || ''}. You can drag the marker if needed`;
+      }
     }
 
     map.on('click', function(e) {
@@ -72,15 +106,30 @@
     const doSearch = debounce(async function(query) {
       if (!query || query.length < 3) return;
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+        // Use CORS-friendly geocoding limited to cities
+        // Open-Meteo Geocoding API
+        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=${(window.JI18N && window.JI18N.getLang && window.JI18N.getLang()) || 'en'}&format=json`;
         const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error(`Geocoding failed: ${resp.status}`);
         const results = await resp.json();
-        if (Array.isArray(results) && results.length > 0) {
-          const best = results[0];
-          const lat = parseFloat(best.lat);
-          const lon = parseFloat(best.lon);
-          map.setView([lat, lon], 13);
+        const candidates = Array.isArray(results.results) ? results.results : [];
+        // Keep only city/town/village and prefer highest population
+        const filtered = candidates
+          .filter(r => ['city', 'town', 'village'].includes((r.feature_code || '').toLowerCase()) || ['city','town','village'].includes((r.admin1 || '').toLowerCase()))
+          .sort((a,b) => (b.population||0) - (a.population||0));
+        const best = filtered[0] || candidates[0];
+        if (best && typeof best.latitude === 'number' && typeof best.longitude === 'number') {
+          const lat = best.latitude;
+          const lon = best.longitude;
+          map.setView([lat, lon], 12);
           setMarker(lat, lon);
+          // If a city/location input exists, populate it with City, Country
+          const cityInput = document.getElementById(options.cityInputId || 'location') || document.getElementById('locationManagement');
+          if (cityInput) {
+            const cityName = best.name || '';
+            const countryName = best.country || '';
+            if (cityName) cityInput.value = countryName ? `${cityName}, ${countryName}` : cityName;
+          }
         }
       } catch (e) {
         console.error('Search failed', e);
@@ -92,8 +141,8 @@
     return { map, setMarker };
   }
 
-  window.initMapPicker = function(mapContainerId, searchInputId, latitudeInputId, longitudeInputId, initialCenter) {
-    return createMapPicker({ mapContainerId, searchInputId, latitudeInputId, longitudeInputId, initialCenter });
+  window.initMapPicker = function(mapContainerId, searchInputId, latitudeInputId, longitudeInputId, initialCenter, extraOptions = {}) {
+    return createMapPicker({ mapContainerId, searchInputId, latitudeInputId, longitudeInputId, initialCenter, ...extraOptions });
   };
 })();
 

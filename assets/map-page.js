@@ -107,9 +107,7 @@
     // Add event listener for map movement
     map.on('moveend', function() {
       const bounds = map.getBounds();
-      const jobsInView = jobs.filter(job => {
-        return bounds.contains([job.location.lat, job.location.lng]);
-      });
+      const jobsInView = jobs.filter(job => bounds.contains([job.latitude, job.longitude]));
       updateJobsList(jobsInView);
     });
 
@@ -124,7 +122,21 @@
       const all = await response.json();
 
       jobs = (Array.isArray(all) ? all : [])
-        .filter(j => j && j.status === 'approved' && j.location && typeof j.location.lat === 'number' && typeof j.location.lng === 'number');
+        .filter(j => j && j.status === 'approved' && typeof j.latitude === 'number' && typeof j.longitude === 'number')
+        .map(j => ({
+          id: j.id,
+          title: j.title,
+          company: j.company,
+          locationText: j.location || '',
+          latitude: j.latitude,
+          longitude: j.longitude,
+          workMode: j.workMode || '',
+          employmentType: j.employmentType || '',
+          description: j.description || '',
+          applyEmail: j.applyEmail || '',
+          applyUrl: j.applyUrl || '',
+          tags: Array.isArray(j.tags) ? j.tags : []
+        }));
 
       addMarkersToMap();
       updateJobsList();
@@ -150,10 +162,15 @@
     markers = [];
 
     jobs.forEach(job => {
-      const marker = L.marker([job.location.lat, job.location.lng])
-        .bindPopup(createPopupContent(job))
+      const icon = L.divIcon({
+        className: 'map-label',
+        html: `<div class="map-label__box"><span class="map-label__title">${escapeHtml(job.title)}</span></div>`,
+        iconSize: [140, 40],
+        iconAnchor: [70, 20]
+      });
+      const marker = L.marker([job.latitude, job.longitude], { icon })
+        .on('click', () => showJobModal(job.id))
         .addTo(map);
-      
       marker.jobId = job.id;
       markers.push(marker);
     });
@@ -163,9 +180,9 @@
   function createPopupContent(job) {
     return `
       <div class="map-popup">
-        <h3>${job.title}</h3>
-        <p><strong>${job.company}</strong></p>
-        <p>${job.location.city}, ${job.location.country}</p>
+        <h3>${escapeHtml(job.title)}</h3>
+        <p><strong>${escapeHtml(job.company)}</strong></p>
+        <p>${escapeHtml(job.locationText)}</p>
         <button onclick="showJobModal('${job.id}')" class="btn btn--small">View Details</button>
       </div>
     `;
@@ -183,8 +200,8 @@
         job.company.toLowerCase().includes(searchTerm) ||
         (job.description && job.description.toLowerCase().includes(searchTerm));
 
-      const matchesType = !typeFilter || job.type === typeFilter;
-      const matchesWorkMode = !workModeFilter || job.workMode === workModeFilter;
+      const matchesType = !typeFilter || (job.employmentType && job.employmentType.toLowerCase() === typeFilter);
+      const matchesWorkMode = !workModeFilter || (job.workMode && job.workMode.toLowerCase() === workModeFilter);
 
       return matchesSearch && matchesType && matchesWorkMode;
     });
@@ -204,12 +221,12 @@
     const jobsHTML = filteredJobs.map(job => `
       <div class="map-job-item" onclick="showJobModal('${job.id}')">
         <div class="map-job-item__header">
-          <h4>${job.title}</h4>
-          <span class="map-job-item__company">${job.company}</span>
+          <h4>${escapeHtml(job.title)}</h4>
+          <span class="map-job-item__company">${escapeHtml(job.company)}</span>
         </div>
         <div class="map-job-item__meta">
-          <span class="map-job-item__location">${job.location.city}, ${job.location.country}</span>
-          <span class="map-job-item__type">${job.type}</span>
+          <span class="map-job-item__location">${escapeHtml(job.locationText)}</span>
+          <span class="map-job-item__type">${escapeHtml(job.employmentType)}</span>
         </div>
       </div>
     `).join('');
@@ -239,12 +256,12 @@
     const jobsHTML = jobsToDisplay.map(job => `
       <div class="map-job-item" onclick="showJobModal('${job.id}')">
         <div class="map-job-item__header">
-          <h4>${job.title}</h4>
-          <span class="map-job-item__company">${job.company}</span>
+          <h4>${escapeHtml(job.title)}</h4>
+          <span class="map-job-item__company">${escapeHtml(job.company)}</span>
         </div>
         <div class="map-job-item__meta">
-          <span class="map-job-item__location">${job.location.city}, ${job.location.country}</span>
-          <span class="map-job-item__type">${job.type}</span>
+          <span class="map-job-item__location">${escapeHtml(job.locationText)}</span>
+          <span class="map-job-item__type">${escapeHtml(job.employmentType)}</span>
         </div>
       </div>
     `).join('');
@@ -264,6 +281,10 @@
     const modal = document.getElementById('jobModal');
     const title = document.getElementById('modalTitle');
     const company = document.getElementById('modalCompany');
+    const meta = document.getElementById('modalMeta');
+    const tags = document.getElementById('modalTags');
+    const desc = document.getElementById('modalDescription');
+    const actions = document.getElementById('modalActions');
 
     if (!modal) {
       console.error('Job modal not found');
@@ -272,6 +293,14 @@
 
     if (title) title.textContent = job.title;
     if (company) company.textContent = job.company;
+    if (meta) meta.textContent = `${job.locationText} • ${job.employmentType} • ${job.workMode}`;
+    if (tags) tags.innerHTML = (job.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+    if (desc) desc.textContent = job.description || '';
+    if (actions) {
+      const mail = job.applyEmail ? `<a class="btn" href="mailto:${encodeURI(job.applyEmail)}">Email</a>` : '';
+      const link = job.applyUrl ? `<a class="btn btn--primary" target="_blank" rel="noopener" href="${encodeURI(job.applyUrl)}">Apply</a>` : '';
+      actions.innerHTML = `${mail} ${link}`;
+    }
 
     modal.classList.add('is-active');
   };
@@ -310,6 +339,15 @@
       jobsList.innerHTML = `<div class="map-jobs-list__error"><p>${message}</p></div>`;
     }
     console.error('Map error:', message);
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   // Initialize when DOM is ready
